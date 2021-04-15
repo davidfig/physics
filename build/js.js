@@ -60,9 +60,10 @@ async function outputError(dir, cache, e) {
 export async function buildJs(dir, cache, minify) {
     const now = performance.now()
     try {
+        const inject = minify ? [] : ['./build/live.js']
         await esbuild.build({
             entryPoints: ['docs/code.ts'],
-            inject: ['./build/live.js'],
+            inject,
             bundle: true,
             outfile: `${dir}/index${cache}.js`,
             minify,

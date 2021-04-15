@@ -6,7 +6,8 @@
   "author": "David Figatner (david@yopeyopey.com)",
   "license": "MIT",
   "scripts": {
-    "start": "node --experimental-specifier-resolution=node build"
+    "start": "node --experimental-specifier-resolution=node build",
+    "build": "node --experimental-specifier-resolution=node build/production"
   },
   "devDependencies": {
     "chokidar": "^3.5.1",
