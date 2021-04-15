@@ -27,6 +27,7 @@ export class Car extends PIXI.Container {
 
     update(elapsedMs: number) {
         this.physics.update(elapsedMs)
+        this.rotation = this.physics.angle
         this.position.set(...this.physics.position)
     }
 }

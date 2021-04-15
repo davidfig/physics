@@ -13,7 +13,7 @@ export enum PhysicsState {
     rest = 0,
     accelerating = 1,
     turning = 2,
-    maxSpeed = 3,
+    cruising = 3,
     stopping = 4,
 }
 
@@ -25,12 +25,21 @@ const defaultPhysicsOptions: IPhysicsOptions = {
     state: PhysicsState.rest,
 }
 
+interface IPhysicsTo {
+    angle?: number
+    speed?: number
+    timeLeft?: number
+    velocity: Vec2
+}
+
 export class Physics {
     protected options: IPhysicsOptions
     protected lastRadians = 0
     protected force = new Vec2()
     protected cachedAcceleration = new Vec2()
-    protected timeLeft = 0
+    protected to: IPhysicsTo = {
+        velocity: new Vec2()
+    }
 
     constructor(options: IPhysicsOptions) {
         this.options = { ...defaultPhysicsOptions, ...options }
@@ -40,17 +49,22 @@ export class Physics {
      * applies a force to change the movement to a different direction and accelerate to maxSpeed in this direction
      * @param degrees - angle in degrees
      */
-    moveAtAngle(degrees: number) {
-        this.moveAtRadians(angles.degreesToRadians(degrees))
+    accelerateToDegrees(degrees: number, speed: number = this.maxSpeed) {
+        this.accelerateToAngle(angles.degreesToRadians(degrees), speed)
     }
 
     /**
      * applies a force to change the movement to a different direction and accelerate to maxSpeed in this direction
      * @param radians - angle in radians
      */
-    moveAtRadians(radians: number) {
+    accelerateToAngle(radians: number, speed: number = this.maxSpeed) {
         if (radians !== this.lastRadians) {
-            this.state = PhysicsState.accelerating
+            this.state = PhysicsState.turning
+            this.to.velocity.direction(radians, speed)
+        } else {
+            if (this.speed !== speed) {
+                this.toSpeed(speed)
+            }
         }
     }
 
@@ -59,7 +73,7 @@ export class Physics {
      * @param [speed=maxSpeed] - desired speed or maxSpeed
      */
     toSpeed(speed: number = this.maxSpeed) {
-        this.timeLeft = Math.abs(speed - this.speed) / this.acceleration
+        this.to.timeLeft = Math.abs(speed - this.speed) / this.acceleration
         const angle = this.angle
         this.cachedAcceleration.x = Math.cos(angle) * this.acceleration
         this.cachedAcceleration.y = Math.sin(angle) * this.acceleration
@@ -69,26 +83,37 @@ export class Physics {
     stop() {
         this.cachedAcceleration = this.velocity.clone().normalize().negative()
         this.cachedAcceleration.multiply(this.acceleration)
-        this.timeLeft = this.speed / this.acceleration
+        this.to.timeLeft = this.speed / this.acceleration
         this.state = PhysicsState.stopping
     }
 
-    private accelerate(elapsedMs: number) {
-        if (elapsedMs >= this.timeLeft) {
-            this.velocity.x += this.cachedAcceleration.x * this.timeLeft
-            this.velocity.y += this.cachedAcceleration.y * this.timeLeft
-            this.timeLeft = 0
+    protected accelerate(elapsedMs: number) {
+        if (elapsedMs >= this.to.timeLeft) {
+            this.lastRadians = this.velocity.angle()
+            this.velocity.x += this.cachedAcceleration.x * this.to.timeLeft
+            this.velocity.y += this.cachedAcceleration.y * this.to.timeLeft
+            this.to.timeLeft = 0
             if (this.state === PhysicsState.stopping) {
                 this.state = PhysicsState.rest
             } else if (this.state === PhysicsState.accelerating) {
-                this.state = PhysicsState.maxSpeed
+                this.state = PhysicsState.cruising
             }
         } else {
             this.velocity.x += this.cachedAcceleration.x * elapsedMs
             this.velocity.y += this.cachedAcceleration.y * elapsedMs
-            this.timeLeft -= elapsedMs
+            this.to.timeLeft -= elapsedMs
         }
         // console.log(this.speed, this.timeLeft)
+    }
+
+    protected turn(elapsedMs: number) {
+        const delta = Vec2.subtract(this.to.velocity, this.velocity).normalize()
+        if (delta.isZero()) {
+            this.state = PhysicsState.cruising
+        } else {
+            this.velocity.x += delta.x * this.acceleration * elapsedMs
+            this.velocity.y += delta.y * this.acceleration * elapsedMs
+        }
     }
 
     update(elapsedMs: number) {
@@ -99,7 +124,10 @@ export class Physics {
             case PhysicsState.stopping:
                 this.accelerate(elapsedMs)
                 break
-            case PhysicsState.maxSpeed:
+            case PhysicsState.turning:
+                this.turn(elapsedMs)
+                break
+            case PhysicsState.cruising:
                 break
         }
         this.x += this.velocity.x * elapsedMs
@@ -118,7 +146,11 @@ export class Physics {
      * @returns radians
      */
     get angle(): number {
-        return this.velocity.angle()
+        if (this.velocity.isZero()) {
+            return this.lastRadians
+        } else {
+            return this.velocity.angle()
+        }
     }
 
     get velocity(): Vec2 {

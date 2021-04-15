@@ -30,19 +30,22 @@ class Main {
         this.viewport.fit(false, FIT, FIT)
         floor.resize(window.innerWidth, window.innerHeight)
         this.viewport.moveCenter(0, 0)
-        this.viewport.on('clicked', (data: PIXI.InteractionEvent) => this.clicked(data))
+        this.viewport.on('clicked', (data: any) => this.clicked(data))
 
         this.car = this.viewport.addChild(new Car())
         this.viewport.follow(this.car)
 
         this.lastTime = Date.now()
         this.update()
-
-        this.car.physics.toSpeed()
     }
 
-    private clicked(data: PIXI.InteractionEvent) {
-        this.car.physics.stop()
+    private clicked(data: any) {
+        const global = data.event.data.global
+        if (this.car.sprite.containsPoint(global)) {
+            this.car.physics.stop()
+        } else {
+            this.car.physics.accelerateToAngle(Math.atan2(global.y - window.innerWidth / 2, global.x - window.innerHeight / 2))
+        }
     }
 
     private update() {

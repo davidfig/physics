@@ -58,7 +58,13 @@ export class Vec2 extends Array {
 
     normalize(): Vec2 {
         const magnitude = this.magnitude()
-        return this.divide(magnitude)
+        if (magnitude === 0) {
+            this[0] = 0
+            this[1] = 0
+            return this
+        } else {
+            return this.divide(magnitude)
+        }
     }
 
     magnitude(): number {
@@ -81,5 +87,21 @@ export class Vec2 extends Array {
 
     equal(vec: Vec2Like, fidelity = FIDELITY) {
         return Math.abs(vec[0] - this[0]) <= fidelity && Math.abs(vec[1] - this[1]) <= fidelity
+    }
+
+    direction(angle: number, speed: number) {
+        this[0] = Math.cos(angle) * speed
+        this[1] = Math.sin(angle) * speed
+    }
+
+    isZero(fidelity = FIDELITY) {
+        return this.equal([0, 0], fidelity)
+    }
+
+    static subtract(vec1: Vec2Like, vec2: Vec2Like, result?: Vec2): Vec2 {
+        result = result || new Vec2()
+        result[0] = vec1[0] - vec2[0]
+        result[1] = vec1[1] - vec2[1]
+        return result
     }
 }

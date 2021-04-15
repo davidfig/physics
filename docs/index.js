@@ -27763,7 +27763,13 @@ void main() {
     }
     normalize() {
       const magnitude = this.magnitude();
-      return this.divide(magnitude);
+      if (magnitude === 0) {
+        this[0] = 0;
+        this[1] = 0;
+        return this;
+      } else {
+        return this.divide(magnitude);
+      }
     }
     magnitude() {
       return Math.sqrt(this[0] * this[0] + this[1] * this[1]);
@@ -27782,11 +27788,24 @@ void main() {
     equal(vec, fidelity = FIDELITY) {
       return Math.abs(vec[0] - this[0]) <= fidelity && Math.abs(vec[1] - this[1]) <= fidelity;
     }
+    direction(angle, speed) {
+      this[0] = Math.cos(angle) * speed;
+      this[1] = Math.sin(angle) * speed;
+    }
+    isZero(fidelity = FIDELITY) {
+      return this.equal([0, 0], fidelity);
+    }
+    static subtract(vec1, vec2, result) {
+      result = result || new Vec2();
+      result[0] = vec1[0] - vec2[0];
+      result[1] = vec1[1] - vec2[1];
+      return result;
+    }
   };
 
   // code/angles.ts
   init_live();
-  var DEGREES_TO_RADIANS = Math.PI * 180;
+  var DEGREES_TO_RADIANS = Math.PI / 180;
   var RADIANS_TO_DEGREES = 180 / Math.PI;
   function degreesToRadians(n) {
     return n * DEGREES_TO_RADIANS;
@@ -27798,7 +27817,7 @@ void main() {
     PhysicsState2[PhysicsState2["rest"] = 0] = "rest";
     PhysicsState2[PhysicsState2["accelerating"] = 1] = "accelerating";
     PhysicsState2[PhysicsState2["turning"] = 2] = "turning";
-    PhysicsState2[PhysicsState2["maxSpeed"] = 3] = "maxSpeed";
+    PhysicsState2[PhysicsState2["cruising"] = 3] = "cruising";
     PhysicsState2[PhysicsState2["stopping"] = 4] = "stopping";
   })(PhysicsState || (PhysicsState = {}));
   var defaultPhysicsOptions = {
@@ -27813,19 +27832,26 @@ void main() {
       this.lastRadians = 0;
       this.force = new Vec2();
       this.cachedAcceleration = new Vec2();
-      this.timeLeft = 0;
+      this.to = {
+        velocity: new Vec2()
+      };
       this.options = {...defaultPhysicsOptions, ...options};
     }
-    moveAtAngle(degrees) {
-      this.moveAtRadians(degreesToRadians(degrees));
+    accelerateToDegrees(degrees, speed = this.maxSpeed) {
+      this.accelerateToAngle(degreesToRadians(degrees), speed);
     }
-    moveAtRadians(radians) {
+    accelerateToAngle(radians, speed = this.maxSpeed) {
       if (radians !== this.lastRadians) {
-        this.state = 1;
+        this.state = 2;
+        this.to.velocity.direction(radians, speed);
+      } else {
+        if (this.speed !== speed) {
+          this.toSpeed(speed);
+        }
       }
     }
     toSpeed(speed = this.maxSpeed) {
-      this.timeLeft = Math.abs(speed - this.speed) / this.acceleration;
+      this.to.timeLeft = Math.abs(speed - this.speed) / this.acceleration;
       const angle = this.angle;
       this.cachedAcceleration.x = Math.cos(angle) * this.acceleration;
       this.cachedAcceleration.y = Math.sin(angle) * this.acceleration;
@@ -27834,14 +27860,15 @@ void main() {
     stop() {
       this.cachedAcceleration = this.velocity.clone().normalize().negative();
       this.cachedAcceleration.multiply(this.acceleration);
-      this.timeLeft = this.speed / this.acceleration;
+      this.to.timeLeft = this.speed / this.acceleration;
       this.state = 4;
     }
     accelerate(elapsedMs) {
-      if (elapsedMs >= this.timeLeft) {
-        this.velocity.x += this.cachedAcceleration.x * this.timeLeft;
-        this.velocity.y += this.cachedAcceleration.y * this.timeLeft;
-        this.timeLeft = 0;
+      if (elapsedMs >= this.to.timeLeft) {
+        this.lastRadians = this.velocity.angle();
+        this.velocity.x += this.cachedAcceleration.x * this.to.timeLeft;
+        this.velocity.y += this.cachedAcceleration.y * this.to.timeLeft;
+        this.to.timeLeft = 0;
         if (this.state === 4) {
           this.state = 0;
         } else if (this.state === 1) {
@@ -27850,7 +27877,16 @@ void main() {
       } else {
         this.velocity.x += this.cachedAcceleration.x * elapsedMs;
         this.velocity.y += this.cachedAcceleration.y * elapsedMs;
-        this.timeLeft -= elapsedMs;
+        this.to.timeLeft -= elapsedMs;
+      }
+    }
+    turn(elapsedMs) {
+      const delta = Vec2.subtract(this.to.velocity, this.velocity).normalize();
+      if (delta.isZero()) {
+        this.state = 3;
+      } else {
+        this.velocity.x += delta.x * this.acceleration * elapsedMs;
+        this.velocity.y += delta.y * this.acceleration * elapsedMs;
       }
     }
     update(elapsedMs) {
@@ -27860,6 +27896,9 @@ void main() {
         case 1:
         case 4:
           this.accelerate(elapsedMs);
+          break;
+        case 2:
+          this.turn(elapsedMs);
           break;
         case 3:
           break;
@@ -27874,7 +27913,11 @@ void main() {
       this.options.state = state;
     }
     get angle() {
-      return this.velocity.angle();
+      if (this.velocity.isZero()) {
+        return this.lastRadians;
+      } else {
+        return this.velocity.angle();
+      }
     }
     get velocity() {
       return this.options.velocity;
@@ -27943,6 +27986,7 @@ void main() {
     }
     update(elapsedMs) {
       this.physics.update(elapsedMs);
+      this.rotation = this.physics.angle;
       this.position.set(...this.physics.position);
     }
   };
@@ -27972,10 +28016,14 @@ void main() {
       this.viewport.follow(this.car);
       this.lastTime = Date.now();
       this.update();
-      this.car.physics.toSpeed();
     }
     clicked(data) {
-      this.car.physics.stop();
+      const global2 = data.event.data.global;
+      if (this.car.sprite.containsPoint(global2)) {
+        this.car.physics.stop();
+      } else {
+        this.car.physics.accelerateToAngle(Math.atan2(global2.y - window.innerWidth / 2, global2.x - window.innerHeight / 2));
+      }
     }
     update() {
       const now = Date.now();
