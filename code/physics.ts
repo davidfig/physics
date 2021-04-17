@@ -1,6 +1,8 @@
 import { Vec2, Vec2Like } from './vec2'
 import * as angles from './angles'
 
+const MIN_ANGLE = 0.01
+
 export interface IPhysicsOptions {
     velocity?: Vec2
     position?: Vec2
@@ -41,7 +43,7 @@ export class Physics {
         velocity: new Vec2()
     }
 
-    constructor(options: IPhysicsOptions) {
+    constructor(options: IPhysicsOptions = {}) {
         this.options = { ...defaultPhysicsOptions, ...options }
     }
 
@@ -61,6 +63,8 @@ export class Physics {
         if (radians !== this.lastRadians) {
             this.state = PhysicsState.turning
             this.to.velocity.direction(radians, speed)
+            this.to.angle = radians
+            this.to.speed = speed
         } else {
             if (this.speed !== speed) {
                 this.toSpeed(speed)
@@ -103,16 +107,14 @@ export class Physics {
             this.velocity.y += this.cachedAcceleration.y * elapsedMs
             this.to.timeLeft -= elapsedMs
         }
-        // console.log(this.speed, this.timeLeft)
     }
 
     protected turn(elapsedMs: number) {
         const delta = Vec2.subtract(this.to.velocity, this.velocity).normalize()
-        if (delta.isZero()) {
-            this.state = PhysicsState.cruising
-        } else {
-            this.velocity.x += delta.x * this.acceleration * elapsedMs
-            this.velocity.y += delta.y * this.acceleration * elapsedMs
+        this.velocity.x += delta.x * this.acceleration * elapsedMs
+        this.velocity.y += delta.y * this.acceleration * elapsedMs
+        if (angles.differenceAngles(this.velocity.angle(), this.to.angle) < MIN_ANGLE) {
+            this.toSpeed(this.to.speed)
         }
     }
 

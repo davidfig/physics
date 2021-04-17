@@ -2,7 +2,8 @@
   "name": "yy-physics",
   "version": "0.1.0",
   "description": "A simple 2d physics engine to handle acceleration and velocity",
-  "main": "index.js",
+  "main": "dist/physics.js",
+  "typescript": "code/physics.ts",
   "author": "David Figatner (david@yopeyopey.com)",
   "license": "MIT",
   "scripts": {
